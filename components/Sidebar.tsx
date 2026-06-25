@@ -2,23 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Activity,
-  BarChart3,
-  CheckSquare,
-  LayoutDashboard,
-  Settings,
-  X
-} from "lucide-react";
+import { X } from "lucide-react";
+import { appRoutes } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-
-const menuItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/tasks", label: "Pekerjaan", icon: CheckSquare },
-  { href: "/activities", label: "Aktivitas Harian", icon: Activity },
-  { href: "/reports", label: "Laporan", icon: BarChart3 },
-  { href: "/settings", label: "Pengaturan", icon: Settings }
-];
 
 interface SidebarProps {
   open?: boolean;
@@ -59,7 +45,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
 
         <nav className="space-y-1">
-          {menuItems.map((item) => {
+          {appRoutes.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
 

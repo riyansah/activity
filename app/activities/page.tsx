@@ -1,13 +1,17 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, RotateCcw, Save } from "lucide-react";
+import { Pagination } from "@/components/Pagination";
 import { ActivityList } from "@/components/ActivityList";
 import { useDashboardStore } from "@/lib/dashboard-store";
 import type { Activity, ActivityCategory, ActivityStatus } from "@/lib/types";
 import { activityCategories, activityStatuses } from "@/lib/types";
-import { makeId, nowIso, todayDate } from "@/lib/utils";
+import { makeId, nowIso, paginateItems, todayDate } from "@/lib/utils";
 import { validateActivityForm } from "@/lib/validation";
+
+const pageSize = 10;
 
 const emptyActivityForm = {
   title: "",
@@ -19,10 +23,14 @@ const emptyActivityForm = {
   notes: ""
 };
 
-export default function ActivitiesPage() {
+function ActivitiesPageContent() {
   const { activities, setActivities } = useDashboardStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedActivityId = searchParams.get("activityId");
   const [categoryFilter, setCategoryFilter] = useState<"Semua" | ActivityCategory>("Semua");
   const [dateFilter, setDateFilter] = useState(todayDate());
+  const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyActivityForm);
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -38,6 +46,70 @@ export default function ActivitiesPage() {
         .sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [activities, categoryFilter, dateFilter]
   );
+
+  const paginatedActivities = useMemo(
+    () => paginateItems(filteredActivities, currentPage, pageSize),
+    [currentPage, filteredActivities]
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, dateFilter]);
+
+  useEffect(() => {
+    if (currentPage !== paginatedActivities.currentPage) {
+      setCurrentPage(paginatedActivities.currentPage);
+    }
+  }, [currentPage, paginatedActivities.currentPage]);
+
+  useEffect(() => {
+    if (!selectedActivityId) {
+      return;
+    }
+
+    const activity = activities.find((item) => item.id === selectedActivityId);
+
+    if (!activity) {
+      return;
+    }
+
+    if (categoryFilter !== "Semua") {
+      setCategoryFilter("Semua");
+      return;
+    }
+
+    if (dateFilter !== activity.date) {
+      setDateFilter(activity.date);
+      return;
+    }
+
+    const orderedActivities = activities
+      .filter((item) => item.date === activity.date)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const targetIndex = orderedActivities.findIndex((item) => item.id === activity.id);
+    const targetPage = Math.floor(targetIndex / pageSize) + 1;
+
+    if (currentPage !== targetPage) {
+      setCurrentPage(targetPage);
+      return;
+    }
+
+    if (editingId !== activity.id) {
+      setEditingId(activity.id);
+      setForm({
+        title: activity.title,
+        category: activity.category,
+        date: activity.date,
+        startTime: activity.startTime,
+        endTime: activity.endTime,
+        status: activity.status,
+        notes: activity.notes
+      });
+      setFormErrors([]);
+    }
+
+    router.replace("/activities", { scroll: false });
+  }, [activities, categoryFilter, currentPage, dateFilter, editingId, router, selectedActivityId]);
 
   function resetForm() {
     setEditingId(null);
@@ -96,6 +168,12 @@ export default function ActivitiesPage() {
   }
 
   function handleDelete(id: string) {
+    const activity = activities.find((item) => item.id === id);
+
+    if (!window.confirm(`Hapus aktivitas "${activity?.title || "ini"}"?`)) {
+      return;
+    }
+
     setActivities((current) => current.filter((activity) => activity.id !== id));
     if (editingId === id) {
       resetForm();
@@ -255,11 +333,27 @@ export default function ActivitiesPage() {
       </section>
 
       <ActivityList
-        activities={filteredActivities}
+        activities={paginatedActivities.items}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onStatusChange={handleStatusChange}
       />
+      <Pagination
+        currentPage={paginatedActivities.currentPage}
+        totalPages={paginatedActivities.totalPages}
+        totalItems={paginatedActivities.totalItems}
+        startItem={paginatedActivities.startItem}
+        endItem={paginatedActivities.endItem}
+        onPageChange={setCurrentPage}
+      />
     </div>
+  );
+}
+
+export default function ActivitiesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ActivitiesPageContent />
+    </Suspense>
   );
 }

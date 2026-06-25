@@ -27,6 +27,37 @@ export function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function useNow(intervalMs = 1000) {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [intervalMs]);
+
+  return now;
+}
+
+export function paginateItems<T>(items: T[], page: number, pageSize: number) {
+  const safePageSize = Math.max(1, Math.floor(pageSize));
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+  const currentPage = Math.min(Math.max(1, Math.floor(page)), totalPages);
+  const startIndex = totalItems ? (currentPage - 1) * safePageSize : 0;
+  const endIndex = totalItems ? Math.min(startIndex + safePageSize, totalItems) : 0;
+
+  return {
+    items: items.slice(startIndex, endIndex),
+    currentPage,
+    pageSize: safePageSize,
+    totalItems,
+    totalPages,
+    startItem: totalItems ? startIndex + 1 : 0,
+    endItem: endIndex
+  };
+}
+
 export function formatDate(value: string) {
   if (!value) {
     return "-";
@@ -37,6 +68,30 @@ export function formatDate(value: string) {
     month: "short",
     year: "numeric"
   }).format(new Date(`${value}T00:00:00`));
+}
+
+export function getDeadlineTimestamp(value: string) {
+  return new Date(`${value}T23:59:59.999`).getTime();
+}
+
+export function formatDeadlineCountdown(value: string, now = Date.now()) {
+  const diff = getDeadlineTimestamp(value) - now;
+  const absoluteSeconds = Math.floor(Math.abs(diff) / 1000);
+  const days = Math.floor(absoluteSeconds / 86400);
+  const hours = Math.floor((absoluteSeconds % 86400) / 3600);
+  const minutes = Math.floor((absoluteSeconds % 3600) / 60);
+  const seconds = absoluteSeconds % 60;
+  const detail = `${days} hari ${hours} jam ${minutes} menit ${seconds} detik`;
+
+  return diff >= 0 ? `${detail} lagi` : `Terlambat ${detail}`;
+}
+
+export function sortTasksByNearestDeadline(tasks: Task[]) {
+  return [...tasks]
+    .filter((task) => task.status !== "Selesai" && task.status !== "Dibatalkan")
+    .sort(
+      (a, b) => getDeadlineTimestamp(a.deadline) - getDeadlineTimestamp(b.deadline) || a.createdAt.localeCompare(b.createdAt)
+    );
 }
 
 export function useLocalStorageState<T>(key: string, fallback: T) {

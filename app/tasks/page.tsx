@@ -1,13 +1,17 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, RotateCcw, Save } from "lucide-react";
+import { Pagination } from "@/components/Pagination";
 import { TaskTable } from "@/components/TaskTable";
 import { useDashboardStore } from "@/lib/dashboard-store";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/types";
 import { taskPriorities, taskStatuses } from "@/lib/types";
-import { makeId, nowIso, todayDate } from "@/lib/utils";
+import { makeId, nowIso, paginateItems, todayDate, useNow } from "@/lib/utils";
 import { validateTaskForm } from "@/lib/validation";
+
+const pageSize = 10;
 
 const emptyTaskForm = {
   title: "",
@@ -18,10 +22,15 @@ const emptyTaskForm = {
   deadline: todayDate()
 };
 
-export default function TasksPage() {
+function TasksPageContent() {
   const { tasks, setTasks } = useDashboardStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedTaskId = searchParams.get("taskId");
+  const now = useNow();
   const [statusFilter, setStatusFilter] = useState<"Semua" | TaskStatus>("Semua");
   const [priorityFilter, setPriorityFilter] = useState<"Semua" | TaskPriority>("Semua");
+  const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyTaskForm);
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -35,6 +44,66 @@ export default function TasksPage() {
       }),
     [priorityFilter, statusFilter, tasks]
   );
+
+  const paginatedTasks = useMemo(
+    () => paginateItems(filteredTasks, currentPage, pageSize),
+    [currentPage, filteredTasks]
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [priorityFilter, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage !== paginatedTasks.currentPage) {
+      setCurrentPage(paginatedTasks.currentPage);
+    }
+  }, [currentPage, paginatedTasks.currentPage]);
+
+  useEffect(() => {
+    if (!selectedTaskId) {
+      return;
+    }
+
+    const task = tasks.find((item) => item.id === selectedTaskId);
+
+    if (!task) {
+      return;
+    }
+
+    if (statusFilter !== "Semua") {
+      setStatusFilter("Semua");
+      return;
+    }
+
+    if (priorityFilter !== "Semua") {
+      setPriorityFilter("Semua");
+      return;
+    }
+
+    const targetIndex = tasks.findIndex((item) => item.id === task.id);
+    const targetPage = Math.floor(targetIndex / pageSize) + 1;
+
+    if (currentPage !== targetPage) {
+      setCurrentPage(targetPage);
+      return;
+    }
+
+    if (editingId !== task.id) {
+      setEditingId(task.id);
+      setForm({
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        startDate: task.startDate,
+        deadline: task.deadline
+      });
+      setFormErrors([]);
+    }
+
+    router.replace("/tasks", { scroll: false });
+  }, [currentPage, editingId, priorityFilter, router, selectedTaskId, statusFilter, tasks]);
 
   function resetForm() {
     setEditingId(null);
@@ -94,6 +163,12 @@ export default function TasksPage() {
   }
 
   function handleDelete(id: string) {
+    const task = tasks.find((item) => item.id === id);
+
+    if (!window.confirm(`Hapus pekerjaan "${task?.title || "ini"}"?`)) {
+      return;
+    }
+
     setTasks((current) => current.filter((task) => task.id !== id));
     if (editingId === id) {
       resetForm();
@@ -258,7 +333,29 @@ export default function TasksPage() {
         </label>
       </section>
 
-      <TaskTable tasks={filteredTasks} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
+      <TaskTable
+        tasks={paginatedTasks.items}
+        now={now}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onStatusChange={handleStatusChange}
+      />
+      <Pagination
+        currentPage={paginatedTasks.currentPage}
+        totalPages={paginatedTasks.totalPages}
+        totalItems={paginatedTasks.totalItems}
+        startItem={paginatedTasks.startItem}
+        endItem={paginatedTasks.endItem}
+        onPageChange={setCurrentPage}
+      />
     </div>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense fallback={null}>
+      <TasksPageContent />
+    </Suspense>
   );
 }

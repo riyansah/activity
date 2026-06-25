@@ -1,16 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Save } from "lucide-react";
+import { ChangeEvent, FormEvent, useState } from "react";
+import { Download, RotateCcw, Save, Upload } from "lucide-react";
 import { useDashboardStore } from "@/lib/dashboard-store";
+import { defaultActivities, defaultSettings, defaultTasks } from "@/lib/data";
+import { createDashboardBackup, parseDashboardBackup } from "@/lib/storage";
 import type { ActivityCategory, ThemePreference } from "@/lib/types";
 import { activityCategories } from "@/lib/types";
 
 const themes: ThemePreference[] = ["Terang", "Gelap", "Sistem"];
 
 export default function SettingsPage() {
-  const { settings, setSettings } = useDashboardStore();
+  const { tasks, setTasks, activities, setActivities, settings, setSettings } = useDashboardStore();
   const [saved, setSaved] = useState(false);
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,6 +31,54 @@ export default function SettingsPage() {
           : [...current.preferredCategories, category]
       };
     });
+  }
+
+  function handleExport() {
+    const backup = createDashboardBackup(tasks, activities, settings);
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `personal-activity-dashboard-${backup.exportedAt.slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setDataMessage("Backup JSON berhasil dibuat.");
+  }
+
+  async function handleImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const parsed = parseDashboardBackup(await file.text());
+
+    if (!parsed.ok) {
+      setDataMessage(parsed.error);
+      return;
+    }
+
+    if (!window.confirm("Impor backup akan mengganti semua data lokal saat ini. Lanjutkan?")) {
+      return;
+    }
+
+    setTasks(parsed.backup.tasks);
+    setActivities(parsed.backup.activities);
+    setSettings(parsed.backup.settings);
+    setDataMessage("Backup berhasil diimpor.");
+  }
+
+  function handleResetData() {
+    if (!window.confirm("Reset akan mengganti semua data lokal dengan data awal. Lanjutkan?")) {
+      return;
+    }
+
+    setTasks(defaultTasks);
+    setActivities(defaultActivities);
+    setSettings(defaultSettings);
+    setDataMessage("Data lokal dikembalikan ke data awal.");
   }
 
   return (
@@ -100,7 +151,7 @@ export default function SettingsPage() {
           </label>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
             className="inline-flex items-center gap-2 rounded bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
@@ -111,6 +162,37 @@ export default function SettingsPage() {
           {saved ? <span className="text-sm font-medium text-teal-700">Pengaturan tersimpan.</span> : null}
         </div>
       </form>
+
+      <section className="grid gap-4 rounded border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-base font-semibold text-slate-950">Backup Data Lokal</h2>
+          <p className="mt-1 text-sm text-slate-500">Kelola salinan data pekerjaan, aktivitas, dan preferensi.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-2 rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <Download className="h-4 w-4" />
+            Export JSON
+          </button>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            <Upload className="h-4 w-4" />
+            Import JSON
+            <input type="file" accept="application/json,.json" onChange={handleImport} className="sr-only" />
+          </label>
+          <button
+            type="button"
+            onClick={handleResetData}
+            className="inline-flex items-center gap-2 rounded border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset data
+          </button>
+        </div>
+        {dataMessage ? <p className="text-sm font-medium text-teal-700">{dataMessage}</p> : null}
+      </section>
     </div>
   );
 }
